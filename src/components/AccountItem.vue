@@ -1,19 +1,19 @@
 <template>
   <td>
     <v-text-field v-model="inputLabel" label="Метки" type="input" maxlength="50" @keydown.enter.prevent="addLabel"
-      @update:model-value="handleUpdate" @update:focused="handleFocus"></v-text-field>
+      @blur="updateLabels"></v-text-field>
   </td>
   <td>
-    <v-select v-model="localType" label="Тип записи" :items="['Локальная', 'LDAP']" @update:model-value="handleUpdate">
+    <v-select v-model="localType" label="Тип записи" :items="['Локальная', 'LDAP']" @update:model-value="updateStore">
     </v-select>
   </td>
   <td>
     <v-text-field v-model="localLogin" label="Логин" type="input" maxlength="100"
-      @update:model-value="handleUpdate"></v-text-field>
+      @update:model-value="updateStore"></v-text-field>
   </td>
   <td>
     <v-text-field v-if="localType === 'Локальная'" v-model="localPassword" label="Пароль"
-      :type="showPassword ? 'text' : 'password'" maxlength="100" @update:model-value="handleUpdate"
+      :type="showPassword ? 'text' : 'password'" maxlength="100" @update:model-value="updateStore"
       :append-inner-icon="showPassword ? 'mdi-eye' : 'mdi-eye-off'" @click:append-inner="togglePasswordVisibility">
     </v-text-field>
   </td>
@@ -22,7 +22,7 @@
 
 <script setup lang="ts">
 import { useAccountsStore } from '@/stores/accounts'
-import { reactive, ref, watch } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 
 interface Account {
   id: number
@@ -30,6 +30,7 @@ interface Account {
   type: string
   login: string
   password: string | null
+  inputLabel: string
 }
 
 const props = defineProps<{
@@ -37,7 +38,7 @@ const props = defineProps<{
 }>()
 
 const store = useAccountsStore()
-const inputLabel = ref('')
+const inputLabel = ref(props.account.labels.map(label => label.text).join('; '))
 const localLabels = ref<{ text: string }[]>([...props.account.labels])
 const localType = ref(props.account.type)
 const localLogin = ref(props.account.login)
@@ -51,22 +52,32 @@ const validation = reactive({
   password: true
 })
 
+onMounted(() => {
+  inputLabel.value = localLabels.value.map(label => label.text).join('; ')
+})
+
+// Обновление меток на основе ввода
+const updateLabels = () => {
+  const input = inputLabel.value.trim()
+  // Разбиваем строку на массив меток и обновляем состояние
+  const newLabels = input ? input.split(';').map(text => ({ text: text.trim() })).filter(l => l.text) : []
+  localLabels.value = newLabels
+}
+
+
 const addLabel = () => {
   const input = inputLabel.value.trim()
+  console.log(localLabels.value)
   if (!input) {
-    localLabels.value = []
-    validation.label = true
-    inputLabel.value = ''
-    updateStore()
-    return
+    localLabels.value = [] // Очистить метки, если ввод пуст
+  } else {
+    const newLabels = input.split(';').map(text => ({ text: text.trim() })).filter(l => l.text && l.text.length <= 50)
+    console.log(newLabels)
+    console.log(inputLabel.value)
+    localLabels.value = newLabels
   }
-
-  const newLabel = { text: input.split(';')[0].trim() }
-  localLabels.value.push(newLabel)
-  inputLabel.value = ''
-  validation.label = true
-
-  updateStore()
+  inputLabel.value = '' // Очистить поле ввода
+  updateStore() // Обновить данные в сторе
 }
 
 const togglePasswordVisibility = () => {
@@ -81,19 +92,8 @@ const validate = () => {
   return Object.values(validation).every(v => v)
 }
 
-const handleFocus = (isFocus: boolean) => {
-  if (isFocus) inputLabel.value = ''
-}
-
-const handleUpdate = () => {
-  if (validate()) {
-    updateStore()
-  }
-}
-
 const updateStore = () => {
-  const labelString = localLabels.value.map(label => label.text).join(';')
-  inputLabel.value = labelString
+  if (!validate()) return
 
   const updatedAccount: Account = {
     ...props.account,
@@ -103,6 +103,7 @@ const updateStore = () => {
     password: localType.value === 'Локальная' ? localPassword.value : null
   }
   store.updateAccount(updatedAccount)
+  inputLabel.value = localLabels.value.map(label => label.text).join(';')
 }
 
 const deleteAccount = () => {
@@ -115,6 +116,7 @@ watch(
   () => props.account,
   (newAccount) => {
     localLabels.value = [...newAccount.labels]
+    inputLabel.value = newAccount.labels.map(label => label.text).join('; ')
     localType.value = newAccount.type
     localLogin.value = newAccount.login
     localPassword.value = newAccount.password || ''
