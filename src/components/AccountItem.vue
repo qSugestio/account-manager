@@ -30,7 +30,6 @@ interface Account {
   type: string
   login: string
   password: string | null
-  inputLabel: string
 }
 
 const props = defineProps<{
